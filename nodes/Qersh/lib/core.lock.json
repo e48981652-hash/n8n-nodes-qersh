@@ -1,0 +1,50 @@
+{
+  "source": "@qersh/webhook@0.1.0",
+  "files": [
+    {
+      "path": "core/config.ts",
+      "sha256": "5a676c424b800180e4376d6a1d3a270abd997fc03f2ae0a2c335459046cb1bf3",
+      "bytes": 8393
+    },
+    {
+      "path": "core/envelope.ts",
+      "sha256": "98a881d8dad3be88d84e4cffbadd225d67dcabbee049c37011865312e21c80ff",
+      "bytes": 9826
+    },
+    {
+      "path": "core/index.ts",
+      "sha256": "a01976e5099576f340319624323f718484acc62aa3f86f64e82ba62874cf87ea",
+      "bytes": 429
+    },
+    {
+      "path": "core/match.ts",
+      "sha256": "72bbfb6b50e4b7e0a6743492d80e89591de1d992ed854a0c70ce0e5c62caa70c",
+      "bytes": 10144
+    },
+    {
+      "path": "core/payer.ts",
+      "sha256": "79f0ce7cd960907d3c12a265b1e663b967585fa397138f9b2bc3a78d316db7b7",
+      "bytes": 1887
+    },
+    {
+      "path": "core/setup-link.ts",
+      "sha256": "55325b00d0acf240806865a157cd40e8bb1717408f84c11991d42c4feaf1516b",
+      "bytes": 11129
+    },
+    {
+      "path": "core/signature.ts",
+      "sha256": "37409c0a658722cffd940e18e7e0dc79347704915d875c486858c6cfbd037c1e",
+      "bytes": 8136
+    },
+    {
+      "path": "core/standard-webhooks.ts",
+      "sha256": "d5318e0a47707a48614b711f18618ee134a9de32c92f1f32130aff439e1b3e29",
+      "bytes": 3208
+    },
+    {
+      "path": "node/index.ts",
+      "sha256": "b3b1b619d45ff258f31a9773083e7636ab746fd75c8e90c7843b3df5bc05763a",
+      "bytes": 2809
+    }
+  ]
+}

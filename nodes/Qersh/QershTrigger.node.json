@@ -1,0 +1,11 @@
+{
+	"node": "n8n-nodes-qersh.qershTrigger",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Finance & Accounting"],
+	"alias": ["Vodafone Cash", "InstaPay", "Orange Cash", "e& money", "Egypt", "wallet", "mobile money", "webhook"],
+	"resources": {
+		"credentialDocumentation": [{ "url": "https://qersh.cfd/en/integrations/n8n#credential" }],
+		"primaryDocumentation": [{ "url": "https://qersh.cfd/en/integrations/n8n" }]
+	}
+}
