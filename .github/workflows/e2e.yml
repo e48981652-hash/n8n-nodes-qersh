@@ -1,5 +1,6 @@
 # Installs the PUBLISHED package in a fresh self-hosted n8n and runs the store template end to end
-# (see e2e/clean-install.mjs). Runs after every successful publish, on demand, and when the e2e folder changes.
+# (see e2e/clean-install.mjs) and runs n8n's scanner on it (scripts/scan-check.mjs). Runs after every successful publish,
+# on demand, and when the e2e folder changes.
 # The script output and the n8n log land in the job summary, which is readable without a GitHub sign-in.
 name: Clean install
 
@@ -24,6 +25,29 @@ on:
       - '.github/workflows/e2e.yml'
 
 jobs:
+  scan:
+    name: n8n scanner on the published version
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # scripts/scan-check.mjs runs @n8n/scan-community-package on <package.json name>@<version> and fails unless the
+      # scanner prints "passed all security checks" (the scanner itself exits 0 on failure). The registry can lag a few
+      # minutes after a publish, so retry.
+      - name: Scan
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if node scripts/scan-check.mjs ${{ github.event.inputs.version }}; then exit 0; fi
+            echo "attempt $attempt failed; waiting 60 s"; sleep 60
+          done
+          exit 1
+
   clean-install:
     name: Install from npm and run T3
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
