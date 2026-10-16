@@ -4,7 +4,7 @@
 
 Qersh (Qersh Pay) is an Android app that reads the incoming-transfer notifications of e-wallets (Vodafone Cash, Orange Cash, e& money, InstaPay) on the merchant's phone and sends a signed webhook to the merchant's server, so orders are confirmed automatically with no payment gateway. Qersh is a wallet notification relay, not a payment service provider.
 
-Package: `@qersh/n8n-nodes-qersh` (npm, MIT). Repository: https://github.com/qersh-pay/n8n-nodes-qersh. Docs page: https://qersh.cfd/en/integrations/n8n. Nodes: **Qersh Trigger** (`qershTrigger`) and **Qersh** (`qersh`); credential **Qersh Webhook API** (`qershWebhookApi`) with the single field `connectionSecret` ("Connection Key"). Everything below is the package README, section by section.
+Package: `@qersh/n8n-nodes-qersh` (npm, MIT). Repository: https://github.com/e48981652-hash/n8n-nodes-qersh. Docs page: https://qersh.cfd/en/integrations/n8n. Nodes: **Qersh Trigger** (`qershTrigger`) and **Qersh** (`qersh`); credential **Qersh Webhook API** (`qershWebhookApi`) with the single field `connectionSecret` ("Connection Key"). Everything below is the package README, section by section.
 
 ### What you get
 
@@ -121,7 +121,7 @@ node kit/sink/send.mjs http://localhost:5678/webhook/qersh --secret qsk_YOUR_KEY
 
 - Guide for merchants and developers: https://qersh.cfd/en/integrations/n8n
 - The integration kit (schema, byte-exact test vectors, reference verifiers and matcher): the `kit/` folder of the Qersh repository, also served at https://qersh.cfd/kit/
-- Issues and contributions: https://github.com/qersh-pay/n8n-nodes-qersh
+- Issues and contributions: https://github.com/e48981652-hash/n8n-nodes-qersh
 
 ### Warnings for agents
 

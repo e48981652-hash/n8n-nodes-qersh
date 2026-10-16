@@ -119,7 +119,7 @@ node kit/sink/send.mjs http://localhost:5678/webhook/qersh --secret qsk_YOUR_KEY
 
 - Guide for merchants and developers: https://qersh.cfd/en/integrations/n8n
 - The integration kit (schema, byte-exact test vectors, reference verifiers and matcher): the `kit/` folder of the Qersh repository, also served at https://qersh.cfd/kit/
-- Issues and contributions: https://github.com/qersh-pay/n8n-nodes-qersh
+- Issues and contributions: https://github.com/e48981652-hash/n8n-nodes-qersh
 
 ## License
 
