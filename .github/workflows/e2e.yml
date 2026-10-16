@@ -1,5 +1,6 @@
 # Installs the PUBLISHED package in a fresh self-hosted n8n and runs the store template end to end
 # (see e2e/clean-install.mjs). Runs after every successful publish, on demand, and when the e2e folder changes.
+# The script output and the n8n log land in the job summary, which is readable without a GitHub sign-in.
 name: Clean install
 
 on:
@@ -42,7 +43,15 @@ jobs:
         with:
           node-version: 22
 
+      - name: Cache the n8n install
+        id: n8n-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/n8n
+          key: n8n-${{ env.N8N_VERSION }}-${{ runner.os }}
+
       - name: Install n8n
+        if: steps.n8n-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/n8n"
           cd "$RUNNER_TEMP/n8n"
@@ -72,10 +81,24 @@ jobs:
           echo "n8n did not come up"; tail -50 "$RUNNER_TEMP/n8n.log"; exit 1
 
       - name: Install the package in n8n and run the store template
-        run: node e2e/clean-install.mjs ${{ github.event.inputs.version }}
+        run: |
+          set -o pipefail
+          node e2e/clean-install.mjs ${{ github.event.inputs.version }} 2>&1 | tee "$RUNNER_TEMP/clean-install.log"
 
-      - name: Logs
+      - name: Job summary
         if: always()
         run: |
-          echo "::group::n8n log"; tail -200 "$RUNNER_TEMP/n8n.log"; echo "::endgroup::"
-          echo "::group::fake store log"; cat "$RUNNER_TEMP/fake-store.log"; echo "::endgroup::"
+          {
+            echo '## Clean install output'
+            echo '```'
+            cat "$RUNNER_TEMP/clean-install.log" 2>/dev/null || echo '(no output)'
+            echo '```'
+            echo '## n8n log (last 150 lines)'
+            echo '```'
+            tail -150 "$RUNNER_TEMP/n8n.log" 2>/dev/null || echo '(no log)'
+            echo '```'
+            echo '## Fake store log'
+            echo '```'
+            cat "$RUNNER_TEMP/fake-store.log" 2>/dev/null || echo '(no log)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
