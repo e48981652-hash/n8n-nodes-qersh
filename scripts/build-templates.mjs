@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'templates');
 mkdirSync(outDir, { recursive: true });
 
-export const PACKAGE = '@qersh/n8n-nodes-qersh';
+export const PACKAGE = '@qersh-pay/n8n-nodes-qersh';
 export const TRIGGER_TYPE = PACKAGE + '.qershTrigger';
 export const NODE_TYPE = PACKAGE + '.qersh';
 const DOCS = 'https://qersh.cfd/en/integrations/n8n';

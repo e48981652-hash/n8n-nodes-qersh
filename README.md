@@ -13,7 +13,7 @@ This package lets that webhook land in n8n. Money never passes through Qersh or 
 ## Install
 
 - **n8n Cloud**: open the nodes panel, search for "Qersh", open the "More from the community" section and select **Install** (instance owners and admins only; the owner can hide community nodes in the Cloud Admin Panel).
-- **Self-hosted**: Settings, Community Nodes, Install, enter `@qersh/n8n-nodes-qersh` (owner or admin role).
+- **Self-hosted**: Settings, Community Nodes, Install, enter `@qersh-pay/n8n-nodes-qersh` (owner or admin role).
 
 ## Connect a wallet in five steps
 

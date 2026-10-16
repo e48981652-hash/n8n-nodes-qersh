@@ -38,4 +38,4 @@ Your store (or a tiny service in front of it) offers three endpoints; add its au
 
 ## Editing the templates
 
-The JSON files are generated: edit [`scripts/build-templates.mjs`](../scripts/build-templates.mjs), run `node scripts/build-templates.mjs`, and commit the result. CI fails when a committed file differs from the generator's output. The node types are `@qersh/n8n-nodes-qersh.qershTrigger` and `@qersh/n8n-nodes-qersh.qersh`; if the package is ever published under another name, change `PACKAGE` in the generator.
+The JSON files are generated: edit [`scripts/build-templates.mjs`](../scripts/build-templates.mjs), run `node scripts/build-templates.mjs`, and commit the result. CI fails when a committed file differs from the generator's output. The node types are `@qersh-pay/n8n-nodes-qersh.qershTrigger` and `@qersh-pay/n8n-nodes-qersh.qersh`; if the package is ever published under another name, change `PACKAGE` in the generator.

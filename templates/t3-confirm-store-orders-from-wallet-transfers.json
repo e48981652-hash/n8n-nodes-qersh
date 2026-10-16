@@ -12,7 +12,7 @@
         "responseMode": "lastNode"
       },
       "name": "Qersh Trigger",
-      "type": "@qersh/n8n-nodes-qersh.qershTrigger",
+      "type": "@qersh-pay/n8n-nodes-qersh.qershTrigger",
       "typeVersion": 1,
       "position": [
         0,
@@ -138,7 +138,7 @@
         "options": {}
       },
       "name": "Match the transfer to an order",
-      "type": "@qersh/n8n-nodes-qersh.qersh",
+      "type": "@qersh-pay/n8n-nodes-qersh.qersh",
       "typeVersion": 1,
       "position": [
         1200,

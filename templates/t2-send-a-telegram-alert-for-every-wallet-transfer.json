@@ -12,7 +12,7 @@
         "responseMode": "lastNode"
       },
       "name": "Qersh Trigger",
-      "type": "@qersh/n8n-nodes-qersh.qershTrigger",
+      "type": "@qersh-pay/n8n-nodes-qersh.qershTrigger",
       "typeVersion": 1,
       "position": [
         0,
