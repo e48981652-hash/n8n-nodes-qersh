@@ -1,0 +1,708 @@
+{
+  "name": "Send a Telegram alert for every wallet transfer (Webhook + Code)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "qersh",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "c085b1ee-e1a9-47b2-8799-be0b9936ca96",
+      "id": "74d4b3c0-d363-4e7b-86fd-6f4edca21396"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "16149404-3b7c-45be-83d4-31a4e35582c4",
+              "name": "connection_key",
+              "value": "paste-the-connection-key-shown-by-the-phone",
+              "type": "string"
+            },
+            {
+              "id": "238e0f0d-33dd-4e10-8444-3eb036381d41",
+              "name": "telegram_chat_id",
+              "value": "YOUR_TELEGRAM_CHAT_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {
+          "stripBinary": false
+        }
+      },
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        240,
+        400
+      ],
+      "id": "c8f9e428-e99b-451d-8569-739c5ae6d989"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checks X-Qersh-Signature on the raw body (qersh.v1) and turns the delivery into one item shaped like the\n// Qersh Trigger's output: event, delivery_id, test, wallet, transfer {...}, data, envelope. Needs the Node\n// 'crypto' module: on self-hosted n8n set NODE_FUNCTION_ALLOW_BUILTIN=crypto (n8n Cloud allows it).\nconst crypto = require('crypto');\nconst settings = $('Settings').first().json;\nconst key = String(settings.connection_key || '').trim();\nconst request = $('Webhook').first();\nconst headers = request.json.headers || {};\nconst header = String(headers['x-qersh-signature'] || '');\nconst raw = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst refuse = (reason) => [{ json: { valid: false, reason } }];\nif (!key || key === 'paste-the-connection-key-shown-by-the-phone') return refuse('no_key');\nif (!raw || !raw.length) return refuse('raw_body_unavailable');\nif (!header) return refuse('missing_header');\nlet t = null;\nconst sigs = [];\nfor (const part of header.split(',')) {\n  const eq = part.indexOf('=');\n  if (eq < 0) continue;\n  const k = part.slice(0, eq).trim();\n  const v = part.slice(eq + 1).trim();\n  if (k === 't' && /^\\d{1,13}$/.test(v)) t = Number(v);\n  else if (k === 'v1' && /^[0-9a-fA-F]{64}$/.test(v)) sigs.push(v.toLowerCase());\n}\nif (t === null || sigs.length === 0) return refuse('malformed_header');\nif (Math.abs(Math.floor(Date.now() / 1000) - t) > 300) return refuse('stale_timestamp');\nconst expected = crypto.createHmac('sha256', key).update(t + '.').update(raw).digest('hex');\nconst good = sigs.some((s) => crypto.timingSafeEqual(Buffer.from(s, 'hex'), Buffer.from(expected, 'hex')));\nif (!good) return refuse('bad_signature');\nlet envelope;\ntry { envelope = JSON.parse(raw.toString('utf8')); } catch (e) { return refuse('invalid_json'); }\nif (!envelope || envelope.schema !== 'qersh.v1' || typeof envelope.event !== 'string') return refuse('not_qersh_v1');\n\n// 01xxxxxxxxx from any spelling, or name@instapay; null for a masked number (0111***3445).\nconst normalizePayer = (value) => {\n  const s = String(value ?? '').trim().toLowerCase();\n  if (!s) return null;\n  if (s.includes('@')) return /^[a-z0-9._-]{2,64}@instapay$/.test(s) ? s : null;\n  let d = '';\n  for (const ch of s) {\n    const c = ch.charCodeAt(0);\n    if (c >= 48 && c <= 57) d += ch;\n    else if (c >= 1632 && c <= 1641) d += String.fromCharCode(c - 1632 + 48);\n    else if (c >= 1776 && c <= 1785) d += String.fromCharCode(c - 1776 + 48);\n  }\n  if (d.startsWith('00')) d = d.slice(2);\n  if (d.startsWith('20') && d.length >= 12) d = d.slice(2);\n  if (d.length === 10 && d.startsWith('1')) d = '0' + d;\n  if (/^01[0-9]{9}$/.test(d)) return d;\n  if (/^[a-z0-9._-]{2,64}$/.test(s) && /[a-z]/.test(s)) return s + '@instapay';\n  return null;\n};\nconst str = (v) => (typeof v === 'string' ? v : null);\nconst summarize = (data) => {\n  if (!data || typeof data !== 'object') return null;\n  const cp = data.counterparty || {};\n  const reasons = Array.isArray(data.risk_reasons) ? data.risk_reasons : [];\n  const forgery = reasons.includes('suspected_forgery') || (data.checks && data.checks.balance_chain === 'refuted');\n  return {\n    transfer_id: str(data.transfer_id), direction: str(data.direction), status: str(data.status),\n    amount: str(data.amount), amount_minor: Number.isInteger(data.amount_minor) ? data.amount_minor : null,\n    currency: str(data.currency), received_at: str(data.received_at),\n    payer: { number: str(cp.number), handle: str(cp.handle), name: str(cp.name), key: normalizePayer(cp.number) ?? normalizePayer(cp.handle) },\n    provider_txn_id: str(data.provider_txn_id), balance_after: str(data.balance_after), risk: str(data.risk),\n    risk_reasons: reasons.filter((r) => typeof r === 'string'), auto_confirm_ok: typeof data.auto_confirm_ok === 'boolean' ? data.auto_confirm_ok : null,\n    balance_chain: data.checks ? str(data.checks.balance_chain) : null, suspected_forgery: forgery === true,\n  };\n};\nconst event = envelope.event;\nconst data = envelope.data && typeof envelope.data === 'object' ? envelope.data : {};\nconst transfer = event.startsWith('transfer.') ? summarize(data) : event === 'webhook.test' ? summarize(data.sample) : null;\nconst attempt = /^\\d{1,9}$/.test(String(headers['x-qersh-attempt'] || '')) ? Number(headers['x-qersh-attempt']) : null;\nconst redelivery = ['manual', 'backfill'].includes(headers['x-qersh-redelivery']) ? headers['x-qersh-redelivery'] : null;\nreturn [{ json: {\n  valid: true, event, delivery_id: envelope.delivery_id, attempt, redelivery,\n  test: envelope.test === true || event === 'webhook.test', created_at: envelope.created_at,\n  wallet: envelope.wallet, transfer, data, envelope,\n} }];"
+      },
+      "name": "Verify the Qersh signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        400
+      ],
+      "id": "f9a40468-99df-4d75-80c7-319b69be2149"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "47836028-f7f7-4e72-8eca-a536f067afdf",
+              "leftValue": "={{ $json.valid === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is the signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        400
+      ],
+      "id": "c67e8966-23f4-4e57-87b7-e568c3a17445"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: \"invalid_signature\", reason: $json.reason }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "name": "Reply 401 to a bad signature",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        800
+      ],
+      "id": "cd239fd3-d276-48af-8f04-c20dc7b9381f"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"status\":\"ok\"}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Reply ok at once",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        400
+      ],
+      "id": "21120726-78d1-4a7d-879c-d46b30d26300"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9191c72f-48f2-442e-8123-b80ac7d29b0a",
+              "leftValue": "={{ $json.test === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this the connection test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        400
+      ],
+      "id": "d2477c6c-dea3-47c3-839d-3aa3aaad8b99"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "51106283-8af3-4647-8128-ee8c352f5de7",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "transfer.received",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this a new transfer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1440,
+        600
+      ],
+      "id": "6b7f6571-0ba5-498a-81ef-959bea969dc9"
+    },
+    {
+      "parameters": {},
+      "name": "Nothing to send for the test",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        200
+      ],
+      "id": "6f9be750-05f9-4a8c-87df-326ff873b258"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "rowNotExists",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "delivery_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.delivery_id }}"
+            }
+          ]
+        },
+        "matchType": "anyCondition"
+      },
+      "name": "Skip a repeated delivery",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        400
+      ],
+      "alwaysOutputData": true,
+      "id": "7d59af44-34e4-425c-8ea5-e76942a2092b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea3c1ba8-3d17-4785-853d-9715358498b7",
+              "leftValue": "={{ !$json.isEmpty() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is the delivery new?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1920,
+        400
+      ],
+      "id": "81b851ed-53db-4903-8c6f-65607b0db786"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "insert",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "delivery_id": "={{ $('Verify the Qersh signature').item.json.delivery_id }}",
+            "transfer_id": "={{ $('Verify the Qersh signature').item.json.transfer.transfer_id }}",
+            "amount": "={{ $('Verify the Qersh signature').item.json.transfer.amount }}",
+            "currency": "={{ $('Verify the Qersh signature').item.json.transfer.currency }}",
+            "payer": "={{ $('Verify the Qersh signature').item.json.transfer.payer.number ?? $('Verify the Qersh signature').item.json.transfer.payer.handle ?? '' }}",
+            "received_at": "={{ $('Verify the Qersh signature').item.json.transfer.received_at ?? $('Verify the Qersh signature').item.json.created_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "delivery_id",
+              "displayName": "delivery_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "transfer_id",
+              "displayName": "transfer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "payer",
+              "displayName": "payer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Remember the delivery",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        200
+      ],
+      "id": "c474a96f-677c-42cc-858c-d4be29bbf785"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Settings').item.json.telegram_chat_id }}",
+        "text": "=<b>{{ $('Verify the Qersh signature').item.json.transfer.amount }} {{ $('Verify the Qersh signature').item.json.transfer.currency }}</b> received from {{ String(($('Verify the Qersh signature').item.json.transfer.payer.number ?? $('Verify the Qersh signature').item.json.transfer.payer.handle ?? $('Verify the Qersh signature').item.json.transfer.payer.name ?? 'unknown payer') ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;') }} ({{ $('Verify the Qersh signature').item.json.wallet.provider }} {{ $('Verify the Qersh signature').item.json.wallet.number_masked }})\nTransaction {{ $('Verify the Qersh signature').item.json.transfer.provider_txn_id ?? '-' }} · risk {{ $('Verify the Qersh signature').item.json.transfer.risk ?? '-' }} · {{ $('Verify the Qersh signature').item.json.transfer.auto_confirm_ok === true ? 'can be confirmed automatically' : 'needs a human check' }}\nMoney arrived {{ $('Verify the Qersh signature').item.json.transfer.received_at ?? $('Verify the Qersh signature').item.json.created_at }}{{ $('Verify the Qersh signature').item.json.redelivery ? ' · delivered late (' + $('Verify the Qersh signature').item.json.redelivery + ')' : '' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "name": "Send the transfer alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        200
+      ],
+      "id": "9118c430-81f9-4a6b-8629-73cf64fa9c55"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "361653d4-d769-4ab4-868c-709e60810a2f",
+              "leftValue": "={{ $json.transfer?.suspected_forgery === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is it a forgery verdict?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        800
+      ],
+      "id": "1a6039cd-b84b-4664-81f7-d539687ebbda"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Settings').item.json.telegram_chat_id }}",
+        "text": "=⚠️ <b>Suspected forgery</b>: the message behind transfer {{ $json.transfer.transfer_id }} did not match the wallet balance.\nDo not ship the order this transfer paid until you see the money in the wallet app ({{ $json.wallet.provider }} {{ $json.wallet.number_masked }}).",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "name": "Send the forgery warning",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        800
+      ],
+      "id": "41229910-9fab-40d8-82f1-09f1a646bbc3"
+    },
+    {
+      "parameters": {},
+      "name": "Already sent",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        600
+      ],
+      "id": "43088921-5e1a-40b3-84c4-5edd2b4d668a"
+    },
+    {
+      "parameters": {},
+      "name": "Nothing to send",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        1000
+      ],
+      "id": "97801352-d20d-4290-855e-800dffb5b4a3"
+    },
+    {
+      "parameters": {
+        "content": "## Send a Telegram alert for every wallet transfer\n\n### How it works\nThe Qersh app on the merchant's phone posts every incoming wallet transfer (Vodafone Cash, Orange Cash, e& money, InstaPay) to the Webhook node as a signed JSON delivery. The Code node checks the signature on the raw body and refuses anything else with 401; a valid delivery is answered with 200 at once. The connection test gets no message. A new transfer is remembered by delivery_id in a Data table, so the phone's retries never send the alert twice; then a Telegram message goes out with the amount, payer, wallet, transaction id and risk. A later \"suspected forgery\" verdict sends a warning so nobody ships against that money.\n\n### Setup\n1. In **Settings**, replace the placeholder with the connection key the phone shows after you add the wallet (paste it only here).\n2. In Settings, put the chat id that should get the alerts (send /start to your bot, then read the chat id from the Telegram Trigger). Select your Telegram bot credential in both Telegram nodes.\n3. Create a Data table qersh_deliveries with the text columns delivery_id, transfer_id, amount, currency, payer, received_at and select it in both Data table nodes.\n4. Activate the workflow and copy the Webhook node's **Production URL** into the Qersh app (More, Wallets, Add wallet, \"your store URL\"). \"Test connection\" on the phone must say the signature was verified. Self-hosted n8n needs `NODE_FUNCTION_ALLOW_BUILTIN=crypto` for the Code node; n8n Cloud allows it.\n\n### Customization tips\nMessages are English; translate the two texts freely and keep the digits Latin. Add a message for transfers that need a human check (auto_confirm_ok is false).\n\nQersh (Qersh Pay) is a wallet notification relay, not a payment service provider. Docs: https://qersh.cfd/en/integrations/n8n",
+        "height": 820,
+        "width": 480,
+        "color": 1
+      },
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -120
+      ],
+      "id": "5ca6a0b0-f684-4927-8a62-5f7df0d4379d"
+    },
+    {
+      "parameters": {
+        "content": "## Verify and route\nThe Code node checks the signature; Settings holds the key and the chat id; the If nodes pick the branch.",
+        "height": 220.00000000000003,
+        "width": 936,
+        "color": 7
+      },
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        384,
+        160
+      ],
+      "id": "87f10440-aff6-4860-8be1-43a25621f519"
+    },
+    {
+      "parameters": {
+        "content": "## Alert once\nThe Data table remembers each delivery_id. A retry or a backfill of the same delivery is skipped.",
+        "height": 280,
+        "width": 1008,
+        "color": 7
+      },
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        320
+      ],
+      "id": "d9addd93-de8e-4c4f-8c80-2f0ab8e70337"
+    },
+    {
+      "parameters": {
+        "content": "## Forgery verdict\ntransfer.updated with suspected_forgery: warn the merchant before anything ships.",
+        "height": 240,
+        "width": 528,
+        "color": 7
+      },
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        720
+      ],
+      "id": "6bb5576f-761b-4e6a-8458-6f5390a4a55b"
+    },
+    {
+      "parameters": {
+        "content": "## Connection key inside the workflow\nThis template keeps the key in the **Settings** node, so it is part of the workflow JSON: do not export or share this workflow. The Qersh community node keeps the key in an encrypted n8n credential instead.",
+        "height": 200,
+        "width": 300,
+        "color": 3
+      },
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        520
+      ],
+      "id": "7764fa8d-0621-45dc-880f-b1f05b673213"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Verify the Qersh signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify the Qersh signature": {
+      "main": [
+        [
+          {
+            "node": "Is the signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is the signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Reply ok at once",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply 401 to a bad signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply ok at once": {
+      "main": [
+        [
+          {
+            "node": "Is this the connection test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this the connection test?": {
+      "main": [
+        [
+          {
+            "node": "Nothing to send for the test",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is this a new transfer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this a new transfer?": {
+      "main": [
+        [
+          {
+            "node": "Skip a repeated delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is it a forgery verdict?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip a repeated delivery": {
+      "main": [
+        [
+          {
+            "node": "Is the delivery new?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is the delivery new?": {
+      "main": [
+        [
+          {
+            "node": "Remember the delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember the delivery": {
+      "main": [
+        [
+          {
+            "node": "Send the transfer alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a forgery verdict?": {
+      "main": [
+        [
+          {
+            "node": "Send the forgery warning",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

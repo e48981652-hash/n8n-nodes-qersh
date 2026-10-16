@@ -1,0 +1,616 @@
+{
+  "name": "Confirm store orders from wallet transfers (Webhook + Code)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "qersh",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "b4d36498-ac43-45f7-8571-7386375bf5f7",
+      "id": "b3124551-fedd-41ac-8286-3844bede6332"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "16149404-3b7c-45be-83d4-31a4e35582c4",
+              "name": "connection_key",
+              "value": "paste-the-connection-key-shown-by-the-phone",
+              "type": "string"
+            },
+            {
+              "id": "a007e492-3f6c-47a7-8091-2d572dc04356",
+              "name": "store_base_url",
+              "value": "https://your-store.example",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {
+          "stripBinary": false
+        }
+      },
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        240,
+        400
+      ],
+      "id": "9642df88-cdf2-4378-8ecb-7c7c24d60fbf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checks X-Qersh-Signature on the raw body (qersh.v1) and turns the delivery into one item shaped like the\n// Qersh Trigger's output: event, delivery_id, test, wallet, transfer {...}, data, envelope. Needs the Node\n// 'crypto' module: on self-hosted n8n set NODE_FUNCTION_ALLOW_BUILTIN=crypto (n8n Cloud allows it).\nconst crypto = require('crypto');\nconst settings = $('Settings').first().json;\nconst key = String(settings.connection_key || '').trim();\nconst request = $('Webhook').first();\nconst headers = request.json.headers || {};\nconst header = String(headers['x-qersh-signature'] || '');\nconst raw = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst refuse = (reason) => [{ json: { valid: false, reason } }];\nif (!key || key === 'paste-the-connection-key-shown-by-the-phone') return refuse('no_key');\nif (!raw || !raw.length) return refuse('raw_body_unavailable');\nif (!header) return refuse('missing_header');\nlet t = null;\nconst sigs = [];\nfor (const part of header.split(',')) {\n  const eq = part.indexOf('=');\n  if (eq < 0) continue;\n  const k = part.slice(0, eq).trim();\n  const v = part.slice(eq + 1).trim();\n  if (k === 't' && /^\\d{1,13}$/.test(v)) t = Number(v);\n  else if (k === 'v1' && /^[0-9a-fA-F]{64}$/.test(v)) sigs.push(v.toLowerCase());\n}\nif (t === null || sigs.length === 0) return refuse('malformed_header');\nif (Math.abs(Math.floor(Date.now() / 1000) - t) > 300) return refuse('stale_timestamp');\nconst expected = crypto.createHmac('sha256', key).update(t + '.').update(raw).digest('hex');\nconst good = sigs.some((s) => crypto.timingSafeEqual(Buffer.from(s, 'hex'), Buffer.from(expected, 'hex')));\nif (!good) return refuse('bad_signature');\nlet envelope;\ntry { envelope = JSON.parse(raw.toString('utf8')); } catch (e) { return refuse('invalid_json'); }\nif (!envelope || envelope.schema !== 'qersh.v1' || typeof envelope.event !== 'string') return refuse('not_qersh_v1');\n\n// 01xxxxxxxxx from any spelling, or name@instapay; null for a masked number (0111***3445).\nconst normalizePayer = (value) => {\n  const s = String(value ?? '').trim().toLowerCase();\n  if (!s) return null;\n  if (s.includes('@')) return /^[a-z0-9._-]{2,64}@instapay$/.test(s) ? s : null;\n  let d = '';\n  for (const ch of s) {\n    const c = ch.charCodeAt(0);\n    if (c >= 48 && c <= 57) d += ch;\n    else if (c >= 1632 && c <= 1641) d += String.fromCharCode(c - 1632 + 48);\n    else if (c >= 1776 && c <= 1785) d += String.fromCharCode(c - 1776 + 48);\n  }\n  if (d.startsWith('00')) d = d.slice(2);\n  if (d.startsWith('20') && d.length >= 12) d = d.slice(2);\n  if (d.length === 10 && d.startsWith('1')) d = '0' + d;\n  if (/^01[0-9]{9}$/.test(d)) return d;\n  if (/^[a-z0-9._-]{2,64}$/.test(s) && /[a-z]/.test(s)) return s + '@instapay';\n  return null;\n};\nconst str = (v) => (typeof v === 'string' ? v : null);\nconst summarize = (data) => {\n  if (!data || typeof data !== 'object') return null;\n  const cp = data.counterparty || {};\n  const reasons = Array.isArray(data.risk_reasons) ? data.risk_reasons : [];\n  const forgery = reasons.includes('suspected_forgery') || (data.checks && data.checks.balance_chain === 'refuted');\n  return {\n    transfer_id: str(data.transfer_id), direction: str(data.direction), status: str(data.status),\n    amount: str(data.amount), amount_minor: Number.isInteger(data.amount_minor) ? data.amount_minor : null,\n    currency: str(data.currency), received_at: str(data.received_at),\n    payer: { number: str(cp.number), handle: str(cp.handle), name: str(cp.name), key: normalizePayer(cp.number) ?? normalizePayer(cp.handle) },\n    provider_txn_id: str(data.provider_txn_id), balance_after: str(data.balance_after), risk: str(data.risk),\n    risk_reasons: reasons.filter((r) => typeof r === 'string'), auto_confirm_ok: typeof data.auto_confirm_ok === 'boolean' ? data.auto_confirm_ok : null,\n    balance_chain: data.checks ? str(data.checks.balance_chain) : null, suspected_forgery: forgery === true,\n  };\n};\nconst event = envelope.event;\nconst data = envelope.data && typeof envelope.data === 'object' ? envelope.data : {};\nconst transfer = event.startsWith('transfer.') ? summarize(data) : event === 'webhook.test' ? summarize(data.sample) : null;\nconst attempt = /^\\d{1,9}$/.test(String(headers['x-qersh-attempt'] || '')) ? Number(headers['x-qersh-attempt']) : null;\nconst redelivery = ['manual', 'backfill'].includes(headers['x-qersh-redelivery']) ? headers['x-qersh-redelivery'] : null;\nreturn [{ json: {\n  valid: true, event, delivery_id: envelope.delivery_id, attempt, redelivery,\n  test: envelope.test === true || event === 'webhook.test', created_at: envelope.created_at,\n  wallet: envelope.wallet, transfer, data, envelope,\n} }];"
+      },
+      "name": "Verify the Qersh signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        400
+      ],
+      "id": "bcebd682-abd9-4322-8b83-d71874ab369b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2265d921-794b-47e3-8378-689eb7409fa5",
+              "leftValue": "={{ $json.valid === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is the signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        400
+      ],
+      "id": "6b888005-869d-4290-85f0-2c5a589f6fd7"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: \"invalid_signature\", reason: $json.reason }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "name": "Reply 401 to a bad signature",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        800
+      ],
+      "id": "82bd2829-b798-4ecc-8471-ec54c5ea6e7b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aca0c859-1f80-4e6d-8c8e-77a955bbdb9b",
+              "leftValue": "={{ $json.test === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this the connection test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        400
+      ],
+      "id": "69838f5f-ad69-43fb-8826-87396e0f3d92"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "496d4301-69b6-4496-8db7-618875d6aed0",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "transfer.received",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this a new transfer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        600
+      ],
+      "id": "18ae6c95-d405-4ad9-8ead-a6d08d882a64"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Settings').item.json.store_base_url }}/qersh/open-orders?payer={{ encodeURIComponent($json.transfer.payer.key ?? '') }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Get the payer's open orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1440,
+        400
+      ],
+      "id": "1db01c66-044b-4edb-8a61-2beb19b5d35f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pure port of kit/reference/match.mjs: the payer and the time decide, the amount only chooses between that\n// payer's own orders. Input: the store's reply { orders: [...] } (order_number, price_minor, paid_minor,\n// payer_key, created_at, expires_at). Output: the reply for the phone plus what the store must do.\nconst transfer = $('Verify the Qersh signature').first().json.transfer;\nconst incoming = $input.first().json;\nconst orders = Array.isArray(incoming.orders) ? incoming.orders : Array.isArray(incoming) ? incoming : [];\nconst LATE_MS = 120 * 60000, SKEW_MS = 10 * 60000;\nconst time = (v) => (typeof v === 'number' ? v : v instanceof Date ? v.getTime() : Date.parse(String(v ?? '')));\nconst done = (status, extra) => [{ json: { status, reference: null, note: null, order_number: null, amount_minor: null, transfer_id: transfer ? transfer.transfer_id : null, action: null, ...extra } }];\nif (!transfer) return done('review', { note: 'no transfer in this delivery' });\nif (transfer.auto_confirm_ok !== true) return done('review', { note: 'risk is not low: a human looks at it' });\nif (!transfer.payer.key) return done('unmatched', { note: 'no payer identifier in the message (masked number?)' });\nif (!Number.isInteger(transfer.amount_minor)) return done('review', { note: 'amount could not be read' });\nconst amount = transfer.amount_minor;\nconst now = Date.now();\nconst got = time(transfer.received_at);\nconst at = Number.isFinite(got) && got < now ? got : now;\nconst stale = now - at > LATE_MS;\nconst mine = orders.filter((o) => o && o.payer_key === transfer.payer.key && (o.status === undefined || o.status === 'open' || o.status === 'partial'));\nconst readable = mine.filter((o) => Number.isInteger(o.price_minor) && Number.isFinite(time(o.created_at)) && Number.isFinite(time(o.expires_at)));\nconst candidates = readable.filter((o) => time(o.expires_at) >= at - LATE_MS && time(o.created_at) <= at + SKEW_MS).sort((a, b) => time(b.created_at) - time(a.created_at));\nif (candidates.length === 0) {\n  if (readable.length < mine.length) return done('review', { note: 'an order of this payer could not be read' });\n  return stale ? done('review', { note: 'late delivery: no order of this payer was open when the money arrived' }) : done('unmatched');\n}\nconst remainingOf = (o) => o.price_minor - (Number.isInteger(o.paid_minor) ? o.paid_minor : 0);\nconst exact = candidates.filter((o) => remainingOf(o) === amount);\nconst order = exact[0] ?? (candidates.length === 1 && readable.length === mine.length ? candidates[0] : null);\nif (!order) return done('review', { note: 'several open orders for this payer, none matches the amount' });\nconst remaining = remainingOf(order);\nconst base = { reference: order.order_number, order_number: order.order_number, amount_minor: amount };\nif (amount < remaining) return done('partial', { ...base, action: 'mark_partial' });\nif (time(order.expires_at) < at) return done('matched', { ...base, action: 'mark_paid', note: 'paid after expiry' });\nreturn done(amount > remaining ? 'overpaid' : 'matched', { ...base, action: 'mark_paid' });"
+      },
+      "name": "Match the transfer to an order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        400
+      ],
+      "id": "a0f2cfb3-30f0-49f9-8397-59ff370f777f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "417cb53a-d2a7-48df-86d0-c12d1b714ce7",
+              "leftValue": "={{ $json.action ?? \"\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Was an order paid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1920,
+        400
+      ],
+      "id": "dade9ef1-74af-489e-87cf-b84798b6d574"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').item.json.store_base_url }}/qersh/mark-paid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_number: $json.order_number, status: $json.status, amount_minor: $json.amount_minor, transfer_id: $json.transfer_id, provider_txn_id: $('Verify the Qersh signature').item.json.transfer.provider_txn_id, payer: $('Verify the Qersh signature').item.json.transfer.payer.key, received_at: $('Verify the Qersh signature').item.json.transfer.received_at }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Mark the order as paid in the store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2160,
+        200
+      ],
+      "id": "7f5e2e17-a15a-4565-85b7-57a7cb4082c0"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8b262d54-7ac6-4c75-8260-db63dbefd168",
+              "leftValue": "={{ $json.transfer?.suspected_forgery === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is it a forgery verdict?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1440,
+        800
+      ],
+      "id": "0ee67bd1-1267-4d4b-81c3-fe69d4b25fae"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').item.json.store_base_url }}/qersh/stop-order",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ transfer_id: $json.transfer.transfer_id, reason: \"suspected_forgery\", delivery_id: $json.delivery_id }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Stop the order in the store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1680,
+        800
+      ],
+      "id": "fe727740-8ad3-4df7-8f94-96d350ead079"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"status\":\"ok\"}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Reply ok",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1920,
+        800
+      ],
+      "id": "ccfbecfe-aa2f-4b10-842a-b995f6702957"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ (() => { const m = $('Match the transfer to an order').item.json; const r = { status: m.status }; if (m.reference) r.reference = m.reference; if (m.note) r.note = m.note; return r; })() }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Reply with the match result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2400,
+        400
+      ],
+      "id": "795b3d31-cbe2-473f-831f-2bda8ffb1da1"
+    },
+    {
+      "parameters": {
+        "content": "## Confirm store orders from wallet transfers\n\n### How it works\nThe Qersh app on the merchant's phone posts every incoming wallet transfer (Vodafone Cash, Orange Cash, e& money, InstaPay) to the Webhook node as a signed JSON delivery; the Code node checks the signature on the raw body and refuses anything else with 401. For a new transfer the workflow asks your store for the open orders of that payer, matches the transfer to the order that was open when the money arrived (payer and time decide; the amount only chooses between that payer's orders), marks the order paid in the store and answers the phone with {\"status\":\"matched\",\"reference\":\"ORD-…\"}. A later \"suspected forgery\" verdict stops the order. Your store stays the source of truth and keeps the delivery_id to answer repeats.\n\n### Setup\n1. In **Settings**, replace the placeholder with the connection key the phone shows after you add the wallet (paste it only here).\n2. In Settings, set store_base_url. Your store offers three small endpoints: GET /qersh/open-orders?payer=… returning {\"orders\":[{order_number, price_minor, paid_minor, payer_key, created_at, expires_at}]}, POST /qersh/mark-paid and POST /qersh/stop-order. Add the store's authentication to the HTTP Request nodes with an n8n credential, never a key in the URL.\n3. Activate the workflow and copy the Webhook node's **Production URL** into the Qersh app (More, Wallets, Add wallet, \"your store URL\"). \"Test connection\" on the phone must say the signature was verified. Self-hosted n8n needs `NODE_FUNCTION_ALLOW_BUILTIN=crypto` for the Code node; n8n Cloud allows it.\n\n### Customization tips\nTune the match node's windows (late 120 minutes, skew 10 minutes). Alert someone from the \"review\" branch. Keep \"Send sender details\" on \"full name and number\" in the wallet, or the payer arrives masked and nothing matches.\n\nQersh (Qersh Pay) is a wallet notification relay, not a payment service provider. Docs: https://qersh.cfd/en/integrations/n8n",
+        "height": 900,
+        "width": 480,
+        "color": 1
+      },
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -120
+      ],
+      "id": "177cff81-5a28-47bd-8703-1a9643a27606"
+    },
+    {
+      "parameters": {
+        "content": "## Verify and route\nThe Code node checks the signature; Settings holds the key and your store URL; the If nodes pick the branch.",
+        "height": 220.00000000000003,
+        "width": 936,
+        "color": 7
+      },
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        384,
+        160
+      ],
+      "id": "a9d1d72b-ee4d-42cd-8b94-e7818e5784a1"
+    },
+    {
+      "parameters": {
+        "content": "## Match and confirm\nYour store returns the payer's open orders; the match picks the one open when the money arrived; the store marks it paid; the phone gets the result.",
+        "height": 280,
+        "width": 1248,
+        "color": 7
+      },
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        320
+      ],
+      "id": "853e0094-b85e-47db-8879-53beccf1e195"
+    },
+    {
+      "parameters": {
+        "content": "## Forgery verdict\ntransfer.updated with suspected_forgery: the store stops the order that transfer paid.",
+        "height": 240,
+        "width": 768,
+        "color": 7
+      },
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        720
+      ],
+      "id": "a58af8f5-565b-464a-82a2-70d284a883c3"
+    },
+    {
+      "parameters": {
+        "content": "## Connection key inside the workflow\nThis template keeps the key in the **Settings** node, so it is part of the workflow JSON: do not export or share this workflow. The Qersh community node keeps the key in an encrypted n8n credential instead.",
+        "height": 200,
+        "width": 300,
+        "color": 3
+      },
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        520
+      ],
+      "id": "4e6f7591-57e6-43ae-83e7-198c7e839222"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Verify the Qersh signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify the Qersh signature": {
+      "main": [
+        [
+          {
+            "node": "Is the signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is the signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Is this the connection test?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply 401 to a bad signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this the connection test?": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is this a new transfer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this a new transfer?": {
+      "main": [
+        [
+          {
+            "node": "Get the payer's open orders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is it a forgery verdict?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get the payer's open orders": {
+      "main": [
+        [
+          {
+            "node": "Match the transfer to an order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match the transfer to an order": {
+      "main": [
+        [
+          {
+            "node": "Was an order paid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was an order paid?": {
+      "main": [
+        [
+          {
+            "node": "Mark the order as paid in the store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply with the match result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a forgery verdict?": {
+      "main": [
+        [
+          {
+            "node": "Stop the order in the store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop the order in the store": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark the order as paid in the store": {
+      "main": [
+        [
+          {
+            "node": "Reply with the match result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

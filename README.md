@@ -86,13 +86,13 @@ A `4xx` other than `408`, `410`, `425`, `429` makes the phone retry slowly for 3
 
 ## Templates
 
-Three templates are published in the n8n library, each in a version with these nodes and a version with the built-in Webhook and Code nodes (that version needs `NODE_FUNCTION_ALLOW_BUILTIN=crypto` on self-hosted n8n; n8n Cloud provides `crypto` in the Code node already):
+Three templates ship in [`templates/`](templates/) and are submitted to the n8n library one at a time; each comes in a version with these nodes and a version with the built-in Webhook and Code nodes (that version needs `NODE_FUNCTION_ALLOW_BUILTIN=crypto` on self-hosted n8n; n8n Cloud provides `crypto` in the Code node already):
 
 1. **Log wallet transfers to Google Sheets**: one row per transfer, no duplicate rows, a status update when a transfer is later flagged.
 2. **Send a Telegram alert for every wallet transfer**: one message per transfer, de-duplicated in a Data Table, a warning when a transfer is flagged.
 3. **Confirm store orders from wallet transfers**: look up the payer's open orders in your store, match, mark the order paid, and answer `matched` to the phone.
 
-The JSON files are in [`templates/`](templates/).
+Import a file with **Workflows → Create → Import from File**, then follow the yellow note. [`templates/README.md`](templates/README.md) describes the store endpoints the third template expects and how the files are generated.
 
 ## Test locally
 

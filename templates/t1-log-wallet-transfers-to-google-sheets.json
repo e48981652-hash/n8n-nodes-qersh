@@ -1,0 +1,629 @@
+{
+  "name": "Log wallet transfers to Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "qersh",
+        "events": [
+          "transfer.received",
+          "transfer.updated",
+          "webhook.test"
+        ],
+        "responseMode": "lastNode"
+      },
+      "name": "Qersh Trigger",
+      "type": "@qersh/n8n-nodes-qersh.qershTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "32673abe-f69e-4e1d-84be-b0286be50640",
+      "id": "40b43264-d60d-4cdd-84e2-105bb92d362c"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "448ce5a0-3ef6-44fe-8439-88695be749a7",
+              "leftValue": "={{ $json.test === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this the connection test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        400
+      ],
+      "id": "dcb32d67-3007-4850-83c5-c0a1d6975395"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6cfd5068-feff-454e-8b1c-c0d746467a55",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "transfer.received",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this a new transfer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        600
+      ],
+      "id": "82639690-9429-4db4-85f7-2fd530624189"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "read",
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "delivery_id",
+              "lookupValue": "={{ $json.delivery_id }}"
+            }
+          ]
+        },
+        "combineFilters": "AND",
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "name": "Look the delivery up in the sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        720,
+        400
+      ],
+      "alwaysOutputData": true,
+      "id": "995ebc1d-80b5-404e-8629-eca02f78189a"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9e2afb18-54fa-4a4d-8309-17e328e681fd",
+              "leftValue": "={{ $json.isEmpty() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is the delivery new?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        400
+      ],
+      "id": "291518d6-038e-478f-8ccb-268e611a5432"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "received_at": "={{ $('Qersh Trigger').item.json.transfer.received_at ?? $('Qersh Trigger').item.json.created_at }}",
+            "amount": "={{ $('Qersh Trigger').item.json.transfer.amount }}",
+            "currency": "={{ $('Qersh Trigger').item.json.transfer.currency }}",
+            "payer_number": "={{ $('Qersh Trigger').item.json.transfer.payer.number ?? $('Qersh Trigger').item.json.transfer.payer.handle ?? '' }}",
+            "payer_name": "={{ $('Qersh Trigger').item.json.transfer.payer.name ?? '' }}",
+            "provider_txn_id": "={{ $('Qersh Trigger').item.json.transfer.provider_txn_id ?? '' }}",
+            "wallet": "={{ $('Qersh Trigger').item.json.wallet.provider }} {{ $('Qersh Trigger').item.json.wallet.number_masked }}",
+            "risk": "={{ $('Qersh Trigger').item.json.transfer.risk ?? '' }}",
+            "auto_confirm_ok": "={{ $('Qersh Trigger').item.json.transfer.auto_confirm_ok === true ? 'yes' : 'no' }}",
+            "transfer_id": "={{ $('Qersh Trigger').item.json.transfer.transfer_id }}",
+            "delivery_id": "={{ $('Qersh Trigger').item.json.delivery_id }}",
+            "status": "={{ $('Qersh Trigger').item.json.transfer.suspected_forgery ? 'SUSPECTED FORGERY' : ($('Qersh Trigger').item.json.transfer.auto_confirm_ok === true ? 'ok' : 'review') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "payer_number",
+              "displayName": "payer_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "payer_name",
+              "displayName": "payer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "provider_txn_id",
+              "displayName": "provider_txn_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "wallet",
+              "displayName": "wallet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "risk",
+              "displayName": "risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "auto_confirm_ok",
+              "displayName": "auto_confirm_ok",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "transfer_id",
+              "displayName": "transfer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "delivery_id",
+              "displayName": "delivery_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Append the transfer row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1200,
+        200
+      ],
+      "id": "75762077-4aa6-4b02-80c4-1e93fea7e343"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5acbeedf-5367-484c-856e-48c674619e07",
+              "leftValue": "={{ $json.transfer?.suspected_forgery === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is it a forgery verdict?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        800
+      ],
+      "id": "c74453d3-d2c5-42ca-8c6d-c015b4459e97"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "update",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transfer_id": "={{ $json.transfer.transfer_id }}",
+            "status": "SUSPECTED FORGERY"
+          },
+          "matchingColumns": [
+            "transfer_id"
+          ],
+          "schema": [
+            {
+              "id": "transfer_id",
+              "displayName": "transfer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Mark the row as suspected forgery",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        960,
+        800
+      ],
+      "id": "988c264a-7006-462b-8a19-dfac91123768"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9afb7af2-86fe-4176-8b7b-2f45b909391c",
+              "name": "status",
+              "value": "ok",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "name": "Reply ok",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1440,
+        400
+      ],
+      "id": "afb9ceed-89dd-4d27-8ff1-24e186d70179"
+    },
+    {
+      "parameters": {
+        "content": "## Log wallet transfers to Google Sheets\n\n### How it works\nThe Qersh app on the merchant's phone posts every incoming wallet transfer (Vodafone Cash, Orange Cash, e& money, InstaPay) to the Qersh Trigger as a signed JSON delivery; the trigger verifies the signature and refuses anything else with 401. The connection test is answered without touching the sheet. Each transfer becomes one row: time, amount, payer, transaction id, wallet, risk. A later \"suspected forgery\" verdict marks the row. Repeated deliveries (the phone retries until it gets a 2xx) are found by delivery_id and not logged twice; the reply {\"status\":\"ok\"} tells the phone the delivery arrived.\n\n### Setup\n1. Add your **Qersh Webhook API** credential (install the Qersh community node first; on n8n Cloud open the nodes panel, \"More from the community\").\n2. Create a Google Sheet with a header row: received_at, amount, currency, payer_number, payer_name, provider_txn_id, wallet, risk, auto_confirm_ok, transfer_id, delivery_id, status. Select it and your Google credential in the three Google Sheets nodes.\n3. Activate the workflow, copy the trigger's **Production URL** into the Qersh app (More, Wallets, Add wallet, \"your store URL\"), then paste the key the phone shows into the credential. \"Test connection\" on the phone must say the signature was verified.\n\n### Customization tips\nAdd columns to the append node as you like (balance_after, payer handle). Keep \"Send sender details\" on \"full name and number\" in the wallet, or the payer number arrives masked. The phone retries a failed delivery for days, so a Sheets outage loses nothing.\n\nQersh (Qersh Pay) is a wallet notification relay, not a payment service provider. Docs: https://qersh.cfd/en/integrations/n8n",
+        "height": 700,
+        "width": 480,
+        "color": 1
+      },
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -120
+      ],
+      "id": "34c62d34-59a7-4552-8857-a72d17a0109b"
+    },
+    {
+      "parameters": {
+        "content": "## Verify and route\nThe trigger verified the signature; the If nodes pick the branch: test, new transfer, or a later verdict.",
+        "height": 220.00000000000003,
+        "width": 696,
+        "color": 7
+      },
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        160
+      ],
+      "id": "f22678ed-a023-4d4c-8500-9b5973269863"
+    },
+    {
+      "parameters": {
+        "content": "## Log once\nLook the delivery_id up first; append only when it is not there. Retries and backfills then never make a second row.",
+        "height": 280,
+        "width": 768,
+        "color": 7
+      },
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        680,
+        320
+      ],
+      "id": "51b531c4-3af7-47f4-87fa-beca1d5c0141"
+    },
+    {
+      "parameters": {
+        "content": "## Forgery verdict\ntransfer.updated with suspected_forgery: the row is marked so nobody ships against that money.",
+        "height": 240,
+        "width": 528,
+        "color": 7
+      },
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        680,
+        720
+      ],
+      "id": "67b3f696-232c-4a47-86aa-057e8f9bf974"
+    }
+  ],
+  "connections": {
+    "Qersh Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is this the connection test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this the connection test?": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is this a new transfer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this a new transfer?": {
+      "main": [
+        [
+          {
+            "node": "Look the delivery up in the sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is it a forgery verdict?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look the delivery up in the sheet": {
+      "main": [
+        [
+          {
+            "node": "Is the delivery new?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is the delivery new?": {
+      "main": [
+        [
+          {
+            "node": "Append the transfer row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a forgery verdict?": {
+      "main": [
+        [
+          {
+            "node": "Mark the row as suspected forgery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append the transfer row": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark the row as suspected forgery": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

@@ -1,0 +1,511 @@
+{
+  "name": "Confirm store orders from wallet transfers",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "qersh",
+        "events": [
+          "transfer.received",
+          "transfer.updated",
+          "webhook.test"
+        ],
+        "responseMode": "lastNode"
+      },
+      "name": "Qersh Trigger",
+      "type": "@qersh/n8n-nodes-qersh.qershTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "1f9e39e2-0fc8-407e-8ce6-35c013c7c487",
+      "id": "649a651f-88b4-4690-8cf8-86df30e79b2d"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a007e492-3f6c-47a7-8091-2d572dc04356",
+              "name": "store_base_url",
+              "value": "https://your-store.example",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {
+          "stripBinary": false
+        }
+      },
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        240,
+        400
+      ],
+      "id": "bc588463-47a8-4f38-877a-fa518eb59216"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aca0c859-1f80-4e6d-8c8e-77a955bbdb9b",
+              "leftValue": "={{ $json.test === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this the connection test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        400
+      ],
+      "id": "e4ec290e-c809-4681-8c99-879046912e04"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "496d4301-69b6-4496-8db7-618875d6aed0",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "transfer.received",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is this a new transfer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        600
+      ],
+      "id": "3b391c87-e3a9-4406-8a1f-68448b2bdaf3"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Settings').item.json.store_base_url }}/qersh/open-orders?payer={{ encodeURIComponent($json.transfer.payer.key ?? '') }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Get the payer's open orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        960,
+        400
+      ],
+      "id": "08425f2d-4f7e-4529-80e5-5880b039afa8"
+    },
+    {
+      "parameters": {
+        "operation": "matchTransfer",
+        "transfer": "={{ $('Qersh Trigger').item.json.transfer }}",
+        "orders": "={{ $json.orders ?? [] }}",
+        "options": {}
+      },
+      "name": "Match the transfer to an order",
+      "type": "@qersh/n8n-nodes-qersh.qersh",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        400
+      ],
+      "id": "9abf2592-cc2f-4f24-86de-425680558770"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "417cb53a-d2a7-48df-86d0-c12d1b714ce7",
+              "leftValue": "={{ $json.action ?? \"\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Was an order paid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1440,
+        400
+      ],
+      "id": "cd6122c8-c1ad-401d-803a-5e3e0c5da765"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').item.json.store_base_url }}/qersh/mark-paid",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_number: $json.order_number, status: $json.status, amount_minor: $json.amount_minor, transfer_id: $json.transfer_id, provider_txn_id: $('Qersh Trigger').item.json.transfer.provider_txn_id, payer: $('Qersh Trigger').item.json.transfer.payer.key, received_at: $('Qersh Trigger').item.json.transfer.received_at }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Mark the order as paid in the store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1680,
+        200
+      ],
+      "id": "3914d1d9-530f-4e5d-85fd-b159cfe96a7f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8b262d54-7ac6-4c75-8260-db63dbefd168",
+              "leftValue": "={{ $json.transfer?.suspected_forgery === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is it a forgery verdict?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        800
+      ],
+      "id": "abfc9fe9-8024-4278-8098-190864f2d8e9"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').item.json.store_base_url }}/qersh/stop-order",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ transfer_id: $json.transfer.transfer_id, reason: \"suspected_forgery\", delivery_id: $json.delivery_id }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Stop the order in the store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1200,
+        800
+      ],
+      "id": "1184bcc2-a4be-4d07-8b68-013e8d2c9fef"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9afb7af2-86fe-4176-8b7b-2f45b909391c",
+              "name": "status",
+              "value": "ok",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "name": "Reply ok",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1440,
+        800
+      ],
+      "id": "d21cb793-7c92-48cc-8ebe-ed537f523446"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ (() => { const m = $('Match the transfer to an order').item.json; const r = { status: m.status }; if (m.reference) r.reference = m.reference; if (m.note) r.note = m.note; return r; })() }}",
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "name": "Reply with the match result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1920,
+        400
+      ],
+      "id": "e3fda92f-e354-417a-8a0e-552cbcf94993"
+    },
+    {
+      "parameters": {
+        "content": "## Confirm store orders from wallet transfers\n\n### How it works\nThe Qersh app on the merchant's phone posts every incoming wallet transfer (Vodafone Cash, Orange Cash, e& money, InstaPay) to the Qersh Trigger as a signed JSON delivery; the trigger verifies the signature and refuses anything else with 401. For a new transfer the workflow asks your store for the open orders of that payer, matches the transfer to the order that was open when the money arrived (payer and time decide; the amount only chooses between that payer's orders), marks the order paid in the store and answers the phone with {\"status\":\"matched\",\"reference\":\"ORD-…\"}. A later \"suspected forgery\" verdict stops the order. Your store stays the source of truth and keeps the delivery_id to answer repeats.\n\n### Setup\n1. Add your **Qersh Webhook API** credential (install the Qersh community node first; on n8n Cloud open the nodes panel, \"More from the community\").\n2. In Settings, set store_base_url. Your store offers three small endpoints: GET /qersh/open-orders?payer=… returning {\"orders\":[{order_number, price_minor, paid_minor, payer_key, created_at, expires_at}]}, POST /qersh/mark-paid and POST /qersh/stop-order. Add the store's authentication to the HTTP Request nodes with an n8n credential, never a key in the URL.\n3. Activate the workflow, copy the trigger's **Production URL** into the Qersh app (More, Wallets, Add wallet, \"your store URL\"), then paste the key the phone shows into the credential. \"Test connection\" on the phone must say the signature was verified.\n\n### Customization tips\nTune the match node's windows (late 120 minutes, skew 10 minutes). Alert someone from the \"review\" branch. Keep \"Send sender details\" on \"full name and number\" in the wallet, or the payer arrives masked and nothing matches.\n\nQersh (Qersh Pay) is a wallet notification relay, not a payment service provider. Docs: https://qersh.cfd/en/integrations/n8n",
+        "height": 840,
+        "width": 480,
+        "color": 1
+      },
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -120
+      ],
+      "id": "3560cc9a-f94a-4789-8dea-443866c2a0d9"
+    },
+    {
+      "parameters": {
+        "content": "## Verify and route\nThe trigger verified the signature; Settings holds your store URL; the If nodes pick the branch: test, new transfer, or a later verdict.",
+        "height": 220.00000000000003,
+        "width": 936,
+        "color": 7
+      },
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        160
+      ],
+      "id": "7e23d828-50a1-4493-8dc5-9fab0457c21e"
+    },
+    {
+      "parameters": {
+        "content": "## Match and confirm\nYour store returns the payer's open orders; the match picks the one open when the money arrived; the store marks it paid; the phone gets the result.",
+        "height": 280,
+        "width": 1248,
+        "color": 7
+      },
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        920,
+        320
+      ],
+      "id": "9b1ba2e2-e8e6-4f89-8f66-655681a24c81"
+    },
+    {
+      "parameters": {
+        "content": "## Forgery verdict\ntransfer.updated with suspected_forgery: the store stops the order that transfer paid.",
+        "height": 240,
+        "width": 768,
+        "color": 7
+      },
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        920,
+        720
+      ],
+      "id": "16ed8101-0f18-4b42-84ed-db996f956cbc"
+    }
+  ],
+  "connections": {
+    "Qersh Trigger": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Is this the connection test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this the connection test?": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is this a new transfer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this a new transfer?": {
+      "main": [
+        [
+          {
+            "node": "Get the payer's open orders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is it a forgery verdict?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get the payer's open orders": {
+      "main": [
+        [
+          {
+            "node": "Match the transfer to an order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match the transfer to an order": {
+      "main": [
+        [
+          {
+            "node": "Was an order paid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was an order paid?": {
+      "main": [
+        [
+          {
+            "node": "Mark the order as paid in the store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply with the match result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a forgery verdict?": {
+      "main": [
+        [
+          {
+            "node": "Stop the order in the store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop the order in the store": {
+      "main": [
+        [
+          {
+            "node": "Reply ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark the order as paid in the store": {
+      "main": [
+        [
+          {
+            "node": "Reply with the match result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

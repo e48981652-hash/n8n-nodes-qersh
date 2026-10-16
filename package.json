@@ -31,6 +31,8 @@
 		"test": "vitest run",
 		"check:core": "node scripts/check-core.mjs",
 		"check:wording": "node scripts/check-wording.mjs",
+		"build:templates": "node scripts/build-templates.mjs",
+		"check:templates": "node scripts/check-templates.mjs",
 		"scan:check": "node scripts/scan-check.mjs",
 		"release": "n8n-node release",
 		"prepublishOnly": "n8n-node prerelease"
