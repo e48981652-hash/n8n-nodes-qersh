@@ -66,7 +66,7 @@ else {
 	for (let attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt++) {
 		const t0 = Date.now();
 		r = await api('POST', '/rest/community-packages', { name: PACKAGE, version: VERSION });
-		console.log(`install ${PACKAGE}@${VERSION} attempt ${attempt} -> ${r.status} in ${Math.round((Date.now() - t0) / 1000)}s${r.status === 200 ? '' : ': ' + short(r.data, 400)}`);
+		console.log(`install ${PACKAGE}@${VERSION} attempt ${attempt} -> ${r.status} in ${Math.round((Date.now() - t0) / 1000)}s: ${short(r.data, 400)}`);
 		if (r.status === 200) break;
 		if (attempt === INSTALL_ATTEMPTS) process.exit(1);
 		await sleep(30_000);
