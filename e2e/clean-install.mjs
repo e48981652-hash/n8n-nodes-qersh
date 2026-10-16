@@ -93,9 +93,13 @@ console.log('installed packages:', installed.map((p) => `${p.packageName}@${p.in
 // 3) the two node types must be loaded
 r = await api('GET', '/types/nodes.json');
 const types = Array.isArray(r.data) ? r.data : [];
-const qersh = types.filter((t) => t.name.startsWith(PACKAGE + '.')).map((t) => `${t.name} v${t.version} "${t.displayName}"`);
-console.log('qersh node types:', qersh.join(' ; ') || 'NONE');
-if (qersh.length !== 2) { fail('expected 2 node types'); process.exit(1); }
+const qersh = types.filter((t) => t.name.startsWith(PACKAGE + '.'));
+console.log('qersh node types:', qersh.map((t) => `${t.name} v${t.version} "${t.displayName}"`).join(' ; ') || 'NONE');
+// n8n adds a generated "<Node> Tool" type for every node with usableAsTool, so more than two is fine
+for (const want of ['qershTrigger', 'qersh']) {
+	if (!qersh.some((t) => t.name === `${PACKAGE}.${want}`)) fail(`node type ${PACKAGE}.${want} is missing`);
+}
+if (failures) process.exit(1);
 
 // 4) credential with the kit's TEST key
 r = await api('GET', '/rest/credentials');
