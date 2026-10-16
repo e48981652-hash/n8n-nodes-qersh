@@ -30,7 +30,7 @@ const demote = (text) => text.replace(/^### /gm, '#### ');
 const firstLine = readme.split('\n').find((l) => l.startsWith('Qersh (Qersh Pay) is'));
 if (!firstLine) throw new Error('README must open with the definition sentence');
 
-const repo = pkg.repository.url.replace(/\.git$/, '');
+const repo = pkg.repository.url.replace(/^git\+/, '').replace(/\.git$/, '');
 const out = [
 	'## n8n',
 	'',
