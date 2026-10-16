@@ -176,7 +176,8 @@ for (const [slug] of selected) {
 	console.log(`\n== ${slug}`);
 	expect(slug, 'webhook.test', send(slug, ['--event', 'webhook.test']), (c) => c.length >= 1 && c.every((x) => x === 200), 'HTTP 200');
 	expect(slug, 'received 150.07', send(slug, ['--amount', '150.07']), (c, l) => c.length >= 1 && c.every((x) => x === 200) && /matched/.test(l), 'HTTP 200 with a matched reply');
-	expect(slug, 'probe (2 x 401)', send(slug, ['--probe']), (c) => c.length >= 2 && c.every((x) => x === 401), 'two HTTP 401');
+	// --probe sends one valid delivery first (200), then a bad signature and a stale timestamp (401 each)
+	expect(slug, 'probe (200, 2 x 401)', send(slug, ['--probe']), (c) => c.length >= 3 && c[0] === 200 && c.slice(-2).every((x) => x === 401), 'HTTP 200 then two HTTP 401');
 	expect(slug, 'forgery', send(slug, ['--forgery', '--amount', '150.07']), (c) => c.length >= 2 && c.every((x) => x === 200), 'HTTP 200 for both deliveries');
 }
 const calls = (await (await fetch(STORE + '/calls')).json()).slice(callsBefore);
