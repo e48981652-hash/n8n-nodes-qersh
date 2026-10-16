@@ -40,8 +40,18 @@ const api = async (method, p, body) => {
 	return { status: res.status, data };
 };
 
+// 0) wait until the REST API answers with JSON: while migrations run, every call gets "n8n is starting up. Please wait"
+let r;
+for (let i = 0; ; i++) {
+	r = await api('GET', '/rest/settings').catch(() => ({ status: 0, data: '' }));
+	if (r.status === 200 && r.data?.data?.versionCli) break;
+	if (i === 120) { console.log('n8n never became ready:', r.status, short(r.data, 120)); process.exit(1); }
+	if (i % 6 === 0) console.log('waiting for n8n:', r.status, short(r.data, 60));
+	await sleep(5_000);
+}
+
 // 1) owner (fresh instance) or login (re-run)
-let r = await api('POST', '/rest/owner/setup', owner);
+r = await api('POST', '/rest/owner/setup', owner);
 if (r.status === 200) console.log('owner created');
 else {
 	r = await api('POST', '/rest/login', { emailOrLdapLoginId: owner.email, password: owner.password });
