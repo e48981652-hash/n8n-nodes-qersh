@@ -49,8 +49,18 @@ else {
 	console.log('logged in as existing owner');
 }
 
+// instance facts
+r = await api('GET', '/rest/settings');
+const settings = r.data?.data ?? {};
+console.log('n8n', settings.versionCli, 'communityNodesEnabled=' + settings.communityNodesEnabled, 'unverifiedCommunityNodesEnabled=' + settings.unverifiedCommunityNodesEnabled);
+
 // 2) install the published package through n8n (retry: the registry can take minutes to serve a fresh version)
-let installed = (await api('GET', '/rest/community-packages')).data?.data ?? [];
+const listInstalled = async () => {
+	const res = await api('GET', '/rest/community-packages');
+	if (!Array.isArray(res.data?.data)) console.log('GET /rest/community-packages ->', res.status, short(res.data, 200));
+	return res.data?.data ?? [];
+};
+let installed = await listInstalled();
 if (installed.some((p) => p.packageName === PACKAGE && p.installedVersion === VERSION)) console.log(`${PACKAGE}@${VERSION} already installed`);
 else {
 	for (let attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt++) {
@@ -62,7 +72,11 @@ else {
 		await sleep(30_000);
 	}
 }
-installed = (await api('GET', '/rest/community-packages')).data?.data ?? [];
+for (let i = 0; i < 12; i++) {
+	installed = await listInstalled();
+	if (installed.some((p) => p.packageName === PACKAGE)) break;
+	await sleep(5_000);
+}
 console.log('installed packages:', installed.map((p) => `${p.packageName}@${p.installedVersion} nodes=${(p.installedNodes ?? []).map((n) => n.type).join(',')}`).join(' ; ') || 'none');
 
 // 3) the two node types must be loaded
