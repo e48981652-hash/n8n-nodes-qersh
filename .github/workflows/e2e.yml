@@ -88,6 +88,10 @@ jobs:
       - name: Job summary
         if: always()
         run: |
+          # annotations are readable without a GitHub sign-in; the summary is not
+          enc() { sed 's/%/%25/g' | tr '\n' '\001' | sed 's/\x01/%0A/g'; }
+          echo "::error title=clean-install output (last 40 lines)::$(tail -40 "$RUNNER_TEMP/clean-install.log" 2>/dev/null | enc)"
+          echo "::warning title=n8n log (last 25 lines)::$(tail -25 "$RUNNER_TEMP/n8n.log" 2>/dev/null | cut -c1-300 | enc)"
           {
             echo '## Clean install output'
             echo '```'
