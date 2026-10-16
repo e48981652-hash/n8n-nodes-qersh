@@ -1,6 +1,6 @@
 {
 	"name": "@qersh/n8n-nodes-qersh",
-	"version": "0.1.0",
+	"version": "0.1.0-rc.0",
 	"description": "n8n community node for Qersh (Qersh Pay): receive signed wallet-transfer notifications (Vodafone Cash, Orange Cash, e& money, InstaPay) from the merchant's phone, verify them, match them to orders and reply from your workflow.",
 	"license": "MIT",
 	"homepage": "https://qersh.cfd/en/integrations/n8n",
@@ -43,7 +43,8 @@
 		"dist"
 	],
 	"publishConfig": {
-		"access": "public"
+		"access": "public",
+		"tag": "next"
 	},
 	"n8n": {
 		"n8nNodesApiVersion": 1,
