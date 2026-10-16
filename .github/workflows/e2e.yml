@@ -41,7 +41,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # n8n 2.43 requires Node 24 or newer
+          node-version: 24
 
       - name: Cache the n8n install
         id: n8n-cache
