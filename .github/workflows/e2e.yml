@@ -76,9 +76,9 @@ jobs:
           node e2e/fake-store.mjs 8788 > "$RUNNER_TEMP/fake-store.log" 2>&1 &
           "$RUNNER_TEMP/n8n/node_modules/.bin/n8n" start > "$RUNNER_TEMP/n8n.log" 2>&1 &
           # /healthz answers 200 while migrations still run and every REST call then says "n8n is starting up";
-          # /healthz/readiness and a JSON answer from /rest/settings mean the API is really usable
+          # a JSON answer from /rest/settings means the API is really usable (n8n 2.43 has no /healthz/readiness)
           for i in $(seq 1 150); do
-            if curl -sf http://localhost:5680/healthz/readiness > /dev/null && curl -sf http://localhost:5680/rest/settings | grep -q '"versionCli"'; then
+            if curl -sf http://localhost:5680/rest/settings | grep -q '"versionCli"'; then
               echo "n8n is ready after $i checks"; exit 0
             fi
             sleep 5
