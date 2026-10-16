@@ -44,7 +44,8 @@ const api = async (method, p, body) => {
 let r;
 for (let i = 0; ; i++) {
 	r = await api('GET', '/rest/settings').catch(() => ({ status: 0, data: '' }));
-	if (r.status === 200 && r.data?.data?.versionCli) break;
+	// before login only the public settings object comes back (settingsMode, no versionCli); any JSON means the routes are mounted
+	if (r.status === 200 && typeof r.data === 'object' && r.data?.data?.settingsMode) break;
 	if (i === 120) { console.log('n8n never became ready:', r.status, short(r.data, 120)); process.exit(1); }
 	if (i % 6 === 0) console.log('waiting for n8n:', r.status, short(r.data, 60));
 	await sleep(5_000);
