@@ -10,6 +10,9 @@ import { isAcceptableKey } from './lib/core/config';
  * Qersh has no server a credential could be tested against: the key lives on the merchant's phone and here. This
  * test therefore checks the shape of the key only, with the same rule the app applies when a key is pasted into it.
  * Both nodes declare it through `testedBy`, because n8n's lint requires every node that uses a credential to do so.
+ * The credential itself also declares `test` (a data: URL carrying the same verdict, see
+ * credentials/QershWebhookApi.credentials.ts); n8n uses a credential's `test` before any node's `testedBy`, so this
+ * function is the fallback for n8n versions or tools that look at nodes only. Keep the two rules identical.
  */
 export async function qershWebhookApiTest(
 	this: ICredentialTestFunctions,

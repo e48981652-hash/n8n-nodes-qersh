@@ -78,7 +78,7 @@ A `4xx` other than `408`, `410`, `425`, `429` makes the phone retry slowly for 3
 
 ## Security
 
-- The connection key lives on the phone and in the n8n credential. It is never logged, never written into an item, and never sent anywhere by this package.
+- The connection key lives on the phone and in the n8n credential. It is never logged, never written into an item, and never sent anywhere by this package. The credential's **Test** button only checks the shape of the key (24+ characters, no spaces, the `qsk_` alphabet): the check runs inside n8n and the request it makes goes to a constant `data:` URL, so no request leaves n8n and the key is never part of it, because Qersh has no server to ask. The first `webhook.test` delivery from the phone is the real proof.
 - Rotation: after **Generate a new key** in the app, the phone signs every delivery with the new key and with the previous one for 24 hours. Update the credential within that day; a delivery refused after that is retried for 3 days once the key matches again.
 - Verification happens on the raw bytes of the request body, before any JSON parsing, with a constant-time comparison and a 300-second window on the signature timestamp.
 - The workflow templates that do not use this package keep the key inside the workflow JSON (in a Set node). Do not export or share such a workflow with the key in it; the credential of this package is the safer place.
