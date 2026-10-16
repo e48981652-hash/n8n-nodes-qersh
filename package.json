@@ -33,6 +33,8 @@
 		"check:wording": "node scripts/check-wording.mjs",
 		"build:templates": "node scripts/build-templates.mjs",
 		"check:templates": "node scripts/check-templates.mjs",
+		"build:llms": "node scripts/build-llms-section.mjs",
+		"check:llms": "node scripts/build-llms-section.mjs --check",
 		"scan:check": "node scripts/scan-check.mjs",
 		"release": "n8n-node release",
 		"prepublishOnly": "n8n-node prerelease"

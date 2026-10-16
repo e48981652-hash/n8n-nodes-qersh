@@ -36,6 +36,9 @@ jobs:
       - name: Templates match their generator
         run: npm run check:templates
 
+      - name: llms section matches the README
+        run: npm run check:llms
+
       - name: Run lint
         run: npm run lint
 
