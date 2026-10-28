@@ -1,5 +1,5 @@
 {
-	"node": "n8n-nodes-qersh.qershTrigger",
+	"node": "@qersh-pay/n8n-nodes-qersh.qershTrigger",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Finance & Accounting"],
